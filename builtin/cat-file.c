@@ -14,6 +14,7 @@
 #include "tree-walk.h"
 #include "oid-array.h"
 #include "packfile.h"
+#include "quote.h"
 #include "object-store.h"
 #include "promisor-remote.h"
 #include "mailmap.h"
@@ -433,6 +434,14 @@ static void batch_print_error(const char *obj_name,
 			      enum get_oid_result result,
 			      struct batch_options* opt)
 {
+		struct strbuf quoted = STRBUF_INIT;
+
+		if (opt->nul_terminated &&
+		    obj_name) {
+			quote_c_style(obj_name, &quoted, NULL, 0);
+			obj_name = quoted.buf;
+		}
+
 		switch (result) {
 		case MISSING_OBJECT:
 			printf("%s missing\n", obj_name);
@@ -458,6 +467,7 @@ static void batch_print_error(const char *obj_name,
 			break;
 		}
 		fflush(stdout);
+		strbuf_release(&quoted);
 }
 
 /*
