@@ -5,7 +5,11 @@ struct string_list;
 
 /**
  * strbuf's are meant to be used with all the usual C string and memory
- * APIs. Given that the length of the buffer is known, it's often better to
+ * APIs. The objects that this API interacts with in this file should be
+ * limited to other primitives, however, there are older functions in here
+ * that should eventually be moved out or refactored.
+ *
+ * Given that the length of the buffer is known, it's often better to
  * use the mem* functions than a str* one (memchr vs. strchr e.g.).
  * Though, one has to be careful about the fact that str* functions often
  * stop on NULs and that strbufs may have embedded NULs.
