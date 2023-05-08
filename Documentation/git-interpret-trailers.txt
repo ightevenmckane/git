@@ -131,7 +131,7 @@ OPTIONS
 
 --no-divider::
 	Do not treat `---` as the end of the commit message. Use this
-	when you know your input contains just the commit message itself
+	when you know your input contains only the commit message part
 	(and not an email or the output of `git format-patch`).
 
 CONFIGURATION VARIABLES
