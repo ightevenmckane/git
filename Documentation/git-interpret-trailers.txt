@@ -234,10 +234,11 @@ trailer.<token>.ifmissing::
 	that option for trailers with the specified <token>.
 
 trailer.<token>.command::
-	This option behaves in the same way as 'trailer.<token>.cmd', except
-	that it doesn't pass anything as argument to the specified command.
-	Instead the first occurrence of substring $ARG is replaced by the
-	value that would be passed as argument.
+	This option behaves in the
+	same way as 'trailer.<token>.cmd', except that it doesn't pass anything as
+	argument to the specified command. Instead the first occurrence of substring
+	$ARG is replaced by the <value> from the trailer. See the
+	'trailer.see.command' trailer example in the "EXAMPLES" section below.
 +
 The 'trailer.<token>.command' option has been deprecated in favor of
 'trailer.<token>.cmd' due to the fact that $ARG in the user's command is
