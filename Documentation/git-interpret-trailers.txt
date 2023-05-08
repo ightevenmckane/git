@@ -234,7 +234,7 @@ trailer.<token>.ifmissing::
 	that option for trailers with the specified <token>.
 
 trailer.<token>.command::
-	This option behaves in the
+	Deprecated in favor of 'trailer.<token>.cmd'. This option behaves in the
 	same way as 'trailer.<token>.cmd', except that it doesn't pass anything as
 	argument to the specified command. Instead the first occurrence of substring
 	$ARG is replaced by the <value> from the trailer. See the
