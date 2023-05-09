@@ -790,14 +790,13 @@ static int refcol_width(const struct ref *ref, int compact_format)
 }
 
 static void display_state_init(struct display_state *display_state, struct ref *ref_map,
-			       const char *raw_url)
+			       const char *raw_url, enum display_format format)
 {
-	const char *format = "full";
 	int i;
 
 	memset(display_state, 0, sizeof(*display_state));
-
 	strbuf_init(&display_state->buf, 0);
+	display_state->format = format;
 
 	if (raw_url)
 		display_state->url = transport_anonymize_url(raw_url);
@@ -813,15 +812,6 @@ static void display_state_init(struct display_state *display_state, struct ref *
 
 	if (verbosity < 0)
 		return;
-
-	git_config_get_string_tmp("fetch.output", &format);
-	if (!strcasecmp(format, "full"))
-		display_state->format = DISPLAY_FORMAT_FULL;
-	else if (!strcasecmp(format, "compact"))
-		display_state->format = DISPLAY_FORMAT_COMPACT;
-	else
-		die(_("invalid value for '%s': '%s'"),
-		    "fetch.output", format);
 
 	switch (display_state->format) {
 	case DISPLAY_FORMAT_FULL:
@@ -1617,7 +1607,8 @@ static int backfill_tags(struct display_state *display_state,
 }
 
 static int do_fetch(struct transport *transport,
-		    struct refspec *rs)
+		    struct refspec *rs,
+		    enum display_format display_format)
 {
 	struct ref_transaction *transaction = NULL;
 	struct ref *ref_map = NULL;
@@ -1703,7 +1694,7 @@ static int do_fetch(struct transport *transport,
 	if (retcode)
 		goto cleanup;
 
-	display_state_init(&display_state, ref_map, transport->url);
+	display_state_init(&display_state, ref_map, transport->url, display_format);
 
 	if (atomic_fetch) {
 		transaction = ref_transaction_begin(&err);
@@ -2086,7 +2077,8 @@ static inline void fetch_one_setup_partial(struct remote *remote)
 }
 
 static int fetch_one(struct remote *remote, int argc, const char **argv,
-		     int prune_tags_ok, int use_stdin_refspecs)
+		     int prune_tags_ok, int use_stdin_refspecs,
+		     enum display_format display_format)
 {
 	struct refspec rs = REFSPEC_INIT_FETCH;
 	int i;
@@ -2153,7 +2145,7 @@ static int fetch_one(struct remote *remote, int argc, const char **argv,
 	sigchain_push_common(unlock_pack_on_signal);
 	atexit(unlock_pack_atexit);
 	sigchain_push(SIGPIPE, SIG_IGN);
-	exit_code = do_fetch(gtransport, &rs);
+	exit_code = do_fetch(gtransport, &rs, display_format);
 	sigchain_pop(SIGPIPE);
 	refspec_clear(&rs);
 	transport_disconnect(gtransport);
@@ -2165,6 +2157,7 @@ int cmd_fetch(int argc, const char **argv, const char *prefix)
 {
 	int i;
 	const char *bundle_uri;
+	enum display_format display_format = DISPLAY_FORMAT_UNKNOWN;
 	struct string_list list = STRING_LIST_INIT_DUP;
 	struct remote *remote = NULL;
 	int result = 0;
@@ -2190,6 +2183,19 @@ int cmd_fetch(int argc, const char **argv, const char *prefix)
 
 	argc = parse_options(argc, argv, prefix,
 			     builtin_fetch_options, builtin_fetch_usage, 0);
+
+	if (display_format == DISPLAY_FORMAT_UNKNOWN) {
+		const char *format = "full";
+
+		git_config_get_string_tmp("fetch.output", &format);
+		if (!strcasecmp(format, "full"))
+			display_format = DISPLAY_FORMAT_FULL;
+		else if (!strcasecmp(format, "compact"))
+			display_format = DISPLAY_FORMAT_COMPACT;
+		else
+			die(_("invalid value for '%s': '%s'"),
+			    "fetch.output", format);
+	}
 
 	if (recurse_submodules_cli != RECURSE_SUBMODULES_DEFAULT)
 		recurse_submodules = recurse_submodules_cli;
@@ -2319,7 +2325,8 @@ int cmd_fetch(int argc, const char **argv, const char *prefix)
 	} else if (remote) {
 		if (filter_options.choice || repo_has_promisor_remote(the_repository))
 			fetch_one_setup_partial(remote);
-		result = fetch_one(remote, argc, argv, prune_tags_ok, stdin_refspecs);
+		result = fetch_one(remote, argc, argv, prune_tags_ok, stdin_refspecs,
+				   display_format);
 	} else {
 		int max_children = max_jobs;
 
