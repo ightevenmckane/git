@@ -56,6 +56,35 @@ test_expect_success 'fetch compact output' '
 	test_cmp expect actual
 '
 
+test_expect_success 'fetch output with HEAD' '
+	test_when_finished "rm -rf head" &&
+	git clone . head &&
+
+	git -C head fetch --dry-run origin HEAD >actual.out 2>actual.err &&
+	cat >expect <<-EOF &&
+	From $(test-tool path-utils real_path .)/.
+	 * branch            HEAD       -> FETCH_HEAD
+	EOF
+	test_must_be_empty actual.out &&
+	test_cmp expect actual.err &&
+
+	git -C head fetch origin HEAD >actual.out 2>actual.err &&
+	test_must_be_empty actual.out &&
+	test_cmp expect actual.err &&
+
+	git -C head fetch --dry-run origin HEAD:foo >actual.out 2>actual.err &&
+	cat >expect <<-EOF &&
+	From $(test-tool path-utils real_path .)/.
+	 * [new ref]         HEAD       -> foo
+	EOF
+	test_must_be_empty actual.out &&
+	test_cmp expect actual.err &&
+
+	git -C head fetch origin HEAD:foo >actual.out 2>actual.err &&
+	test_must_be_empty actual.out &&
+	test_cmp expect actual.err
+'
+
 test_expect_success '--no-show-forced-updates' '
 	mkdir forced-updates &&
 	(
