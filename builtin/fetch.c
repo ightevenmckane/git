@@ -54,6 +54,7 @@ enum display_format {
 	DISPLAY_FORMAT_UNKNOWN = 0,
 	DISPLAY_FORMAT_FULL,
 	DISPLAY_FORMAT_COMPACT,
+	DISPLAY_FORMAT_PORCELAIN,
 };
 
 struct display_state {
@@ -747,6 +748,9 @@ static void display_state_init(struct display_state *display_state, struct ref *
 
 		break;
 	}
+	case DISPLAY_FORMAT_PORCELAIN:
+		/* We don't need to precompute anything here. */
+		break;
 	default:
 		BUG("unexpected display format %d", display_state->format);
 	}
@@ -817,8 +821,12 @@ static void print_compact(struct display_state *display_state,
 static void display_ref_update(struct display_state *display_state, char code,
 			       const char *summary, const char *error,
 			       const char *remote, const char *local,
+			       const struct object_id *old_oid,
+			       const struct object_id *new_oid,
 			       int summary_width)
 {
+	FILE *f = stderr;
+
 	if (verbosity < 0)
 		return;
 
@@ -851,12 +859,17 @@ static void display_ref_update(struct display_state *display_state, char code,
 
 		break;
 	}
+	case DISPLAY_FORMAT_PORCELAIN:
+		strbuf_addf(&display_state->buf, "%c %s %s %s", code,
+			    oid_to_hex(old_oid), oid_to_hex(new_oid), local);
+		f = stdout;
+		break;
 	default:
 		BUG("unexpected display format %d", display_state->format);
 	};
 	strbuf_addch(&display_state->buf, '\n');
 
-	fputs(display_state->buf.buf, stderr);
+	fputs(display_state->buf.buf, f);
 }
 
 static int update_local_ref(struct ref *ref,
@@ -874,7 +887,8 @@ static int update_local_ref(struct ref *ref,
 	if (oideq(&ref->old_oid, &ref->new_oid)) {
 		if (verbosity > 0)
 			display_ref_update(display_state, '=', _("[up to date]"), NULL,
-					   remote_ref->name, ref->name, summary_width);
+					   remote_ref->name, ref->name,
+					   &ref->old_oid, &ref->new_oid, summary_width);
 		return 0;
 	}
 
@@ -887,7 +901,8 @@ static int update_local_ref(struct ref *ref,
 		 */
 		display_ref_update(display_state, '!', _("[rejected]"),
 				   _("can't fetch into checked-out branch"),
-				   remote_ref->name, ref->name, summary_width);
+				   remote_ref->name, ref->name,
+				   &ref->old_oid, &ref->new_oid, summary_width);
 		return 1;
 	}
 
@@ -898,12 +913,14 @@ static int update_local_ref(struct ref *ref,
 			r = s_update_ref("updating tag", ref, transaction, 0);
 			display_ref_update(display_state, r ? '!' : 't', _("[tag update]"),
 					   r ? _("unable to update local ref") : NULL,
-					   remote_ref->name, ref->name, summary_width);
+					   remote_ref->name, ref->name,
+					   &ref->old_oid, &ref->new_oid, summary_width);
 			return r;
 		} else {
 			display_ref_update(display_state, '!', _("[rejected]"),
 					   _("would clobber existing tag"),
-					   remote_ref->name, ref->name, summary_width);
+					   remote_ref->name, ref->name,
+					   &ref->old_oid, &ref->new_oid, summary_width);
 			return 1;
 		}
 	}
@@ -936,7 +953,8 @@ static int update_local_ref(struct ref *ref,
 		r = s_update_ref(msg, ref, transaction, 0);
 		display_ref_update(display_state, r ? '!' : '*', what,
 				   r ? _("unable to update local ref") : NULL,
-				   remote_ref->name, ref->name, summary_width);
+				   remote_ref->name, ref->name,
+				   &ref->old_oid, &ref->new_oid, summary_width);
 		return r;
 	}
 
@@ -959,7 +977,8 @@ static int update_local_ref(struct ref *ref,
 		r = s_update_ref("fast-forward", ref, transaction, 1);
 		display_ref_update(display_state, r ? '!' : ' ', quickref.buf,
 				   r ? _("unable to update local ref") : NULL,
-				   remote_ref->name, ref->name, summary_width);
+				   remote_ref->name, ref->name,
+				   &ref->old_oid, &ref->new_oid, summary_width);
 		strbuf_release(&quickref);
 		return r;
 	} else if (force || ref->force) {
@@ -971,12 +990,14 @@ static int update_local_ref(struct ref *ref,
 		r = s_update_ref("forced-update", ref, transaction, 1);
 		display_ref_update(display_state, r ? '!' : '+', quickref.buf,
 				   r ? _("unable to update local ref") : _("forced update"),
-				   remote_ref->name, ref->name, summary_width);
+				   remote_ref->name, ref->name,
+				   &ref->old_oid, &ref->new_oid, summary_width);
 		strbuf_release(&quickref);
 		return r;
 	} else {
 		display_ref_update(display_state, '!', _("[rejected]"), _("non-fast-forward"),
-				   remote_ref->name, ref->name, summary_width);
+				   remote_ref->name, ref->name,
+				   &ref->old_oid, &ref->new_oid, summary_width);
 		return 1;
 	}
 }
@@ -1217,7 +1238,9 @@ static int store_updated_refs(struct display_state *display_state,
 				display_ref_update(display_state, '*',
 						   *kind ? kind : "branch", NULL,
 						   rm->name,
-						   "FETCH_HEAD", summary_width);
+						   "FETCH_HEAD",
+						   &rm->new_oid, &rm->old_oid,
+						   summary_width);
 			}
 		}
 	}
@@ -1357,6 +1380,7 @@ static int prune_refs(struct display_state *display_state,
 		for (ref = stale_refs; ref; ref = ref->next) {
 			display_ref_update(display_state, '-', _("[deleted]"), NULL,
 					   _("(none)"), ref->name,
+					   &ref->new_oid, &ref->old_oid,
 					   summary_width);
 			warn_dangling_symref(stderr, dangling_msg, ref->name);
 		}
@@ -1789,7 +1813,8 @@ static int add_remote_or_group(const char *name, struct string_list *list)
 	return 1;
 }
 
-static void add_options_to_argv(struct strvec *argv)
+static void add_options_to_argv(struct strvec *argv,
+				enum display_format format)
 {
 	if (dry_run)
 		strvec_push(argv, "--dry-run");
@@ -1825,6 +1850,8 @@ static void add_options_to_argv(struct strvec *argv)
 		strvec_push(argv, "--ipv6");
 	if (!write_fetch_head)
 		strvec_push(argv, "--no-write-fetch-head");
+	if (format == DISPLAY_FORMAT_PORCELAIN)
+		strvec_pushf(argv, "--porcelain");
 }
 
 /* Fetch multiple remotes in parallel */
@@ -1833,6 +1860,7 @@ struct parallel_fetch_state {
 	const char **argv;
 	struct string_list *remotes;
 	int next, result;
+	enum display_format format;
 };
 
 static int fetch_next_remote(struct child_process *cp,
@@ -1852,7 +1880,7 @@ static int fetch_next_remote(struct child_process *cp,
 	strvec_push(&cp->args, remote);
 	cp->git_cmd = 1;
 
-	if (verbosity >= 0)
+	if (verbosity >= 0 && state->format != DISPLAY_FORMAT_PORCELAIN)
 		printf(_("Fetching %s\n"), remote);
 
 	return 1;
@@ -1884,7 +1912,8 @@ static int fetch_finished(int result, struct strbuf *out,
 	return 0;
 }
 
-static int fetch_multiple(struct string_list *list, int max_children)
+static int fetch_multiple(struct string_list *list, int max_children,
+			  enum display_format format)
 {
 	int i, result = 0;
 	struct strvec argv = STRVEC_INIT;
@@ -1902,10 +1931,10 @@ static int fetch_multiple(struct string_list *list, int max_children)
 	strvec_pushl(&argv, "-c", "fetch.bundleURI=",
 		     "fetch", "--append", "--no-auto-gc",
 		     "--no-write-commit-graph", NULL);
-	add_options_to_argv(&argv);
+	add_options_to_argv(&argv, format);
 
 	if (max_children != 1 && list->nr != 1) {
-		struct parallel_fetch_state state = { argv.v, list, 0, 0 };
+		struct parallel_fetch_state state = { argv.v, list, 0, 0, format };
 		const struct run_process_parallel_opts opts = {
 			.tr2_category = "fetch",
 			.tr2_label = "parallel/fetch",
@@ -1929,7 +1958,7 @@ static int fetch_multiple(struct string_list *list, int max_children)
 
 			strvec_pushv(&cmd.args, argv.v);
 			strvec_push(&cmd.args, name);
-			if (verbosity >= 0)
+			if (verbosity >= 0 && format != DISPLAY_FORMAT_PORCELAIN)
 				printf(_("Fetching %s\n"), name);
 			cmd.git_cmd = 1;
 			if (run_command(&cmd)) {
@@ -2060,6 +2089,13 @@ static int fetch_one(struct remote *remote, int argc, const char **argv,
 	return exit_code;
 }
 
+static int opt_parse_porcelain(const struct option *opt, const char *arg, int unset)
+{
+	enum display_format *format = opt->value;
+	*format = DISPLAY_FORMAT_PORCELAIN;
+	return 0;
+}
+
 int cmd_fetch(int argc, const char **argv, const char *prefix)
 {
 	const char *bundle_uri;
@@ -2112,6 +2148,8 @@ int cmd_fetch(int argc, const char **argv, const char *prefix)
 			    PARSE_OPT_OPTARG, option_fetch_parse_recurse_submodules),
 		OPT_BOOL(0, "dry-run", &dry_run,
 			 N_("dry run")),
+		OPT_CALLBACK_F(0, "porcelain", &display_format, NULL, N_("machine-readable output"),
+			       PARSE_OPT_NOARG|PARSE_OPT_NONEG, opt_parse_porcelain),
 		OPT_BOOL(0, "write-fetch-head", &write_fetch_head,
 			 N_("write fetched references to the FETCH_HEAD file")),
 		OPT_BOOL('k', "keep", &keep, N_("keep downloaded pack")),
@@ -2228,6 +2266,23 @@ int cmd_fetch(int argc, const char **argv, const char *prefix)
 			  ? &recurse_submodules : NULL;
 
 		fetch_config_from_gitmodules(sfjc, rs);
+	}
+
+	if (display_format == DISPLAY_FORMAT_PORCELAIN) {
+		switch (recurse_submodules_cli) {
+		case RECURSE_SUBMODULES_OFF:
+		case RECURSE_SUBMODULES_DEFAULT:
+			/*
+			 * Reference updates in submodules would be ambiguous
+			 * in porcelain mode, so we reject this combination.
+			 */
+			recurse_submodules = RECURSE_SUBMODULES_OFF;
+			break;
+
+		default:
+			die(_("options '%s' and '%s' cannot be used together"),
+			    "--porcelain", "--recurse-submodules");
+		}
 	}
 
 	if (negotiate_only && !negotiation_tip.nr)
@@ -2349,7 +2404,7 @@ int cmd_fetch(int argc, const char **argv, const char *prefix)
 			max_children = fetch_parallel_config;
 
 		/* TODO should this also die if we have a previous partial-clone? */
-		result = fetch_multiple(&list, max_children);
+		result = fetch_multiple(&list, max_children, display_format);
 	}
 
 
@@ -2371,7 +2426,7 @@ int cmd_fetch(int argc, const char **argv, const char *prefix)
 		if (max_children < 0)
 			max_children = fetch_parallel_config;
 
-		add_options_to_argv(&options);
+		add_options_to_argv(&options, display_format);
 		result = fetch_submodules(the_repository,
 					  &options,
 					  submodule_prefix,
