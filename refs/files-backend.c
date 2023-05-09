@@ -1181,6 +1181,17 @@ static int should_pack_ref(const char *refname,
 	    REF_WORKTREE_SHARED)
 		return 0;
 
+	if (opts->exclusions && ref_excluded(opts->exclusions, refname))
+		return 0;
+
+	if (opts->included_refs && opts->included_refs->nr) {
+		struct string_list_item *item;
+
+		for_each_string_list_item(item, opts->included_refs)
+			if (!wildmatch(item->string, refname, 0))
+				return 1;
+	}
+
 	/* Do not pack non-tags unless PACK_REFS_ALL is set: */
 	if (!(opts->flags & PACK_REFS_ALL) && !starts_with(refname, "refs/tags/"))
 		return 0;
@@ -1191,9 +1202,6 @@ static int should_pack_ref(const char *refname,
 
 	/* Do not pack broken refs: */
 	if (!ref_resolves_to_object(refname, the_repository, oid, ref_flags))
-		return 0;
-
-	if (opts->exclusions && ref_excluded(opts->exclusions, refname))
 		return 0;
 
 	return 1;
